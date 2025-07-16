@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Classement de Films</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>🎬 Classement de Films</h1>
+        <p>Organisez vos films préférés en 9 catégories</p>
+      </div>
+
+      <div class="stats">
+        <div class="stats-grid">
+          <div class="stat-item">
+            <div class="stat-number" id="totalMovies">0</div>
+            <div class="stat-label">Films totaux</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-number" id="classifiedMovies">0</div>
+            <div class="stat-label">Films classés</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-number" id="remainingMovies">0</div>
+            <div class="stat-label">Films restants</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-number" id="progressPercent">0%</div>
+            <div class="stat-label">Progression</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="movie-section">
+        <div class="movie-header">
+          <div class="movie-counter" id="movieCounter">Chargement...</div>
+          <div class="progress-bar">
+            <div
+              class="progress-fill"
+              id="progressFill"
+              style="width: 0%"
+            ></div>
+          </div>
+        </div>
+
+        <div id="movieDisplay" class="movie-card">
+          <div class="empty-state">
+            <h3>🎥 Chargement des films...</h3>
+            <p>Veuillez patienter pendant le chargement du catalogue.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="keyboard-shortcuts">
+        <h4>⌨️ Raccourcis clavier</h4>
+        <div class="shortcut-list">
+          <div class="shortcut-item">
+            <span class="shortcut-key">1</span>
+            <span>Chef-d'œuvre</span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-key">2</span>
+            <span>Excellent</span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-key">3</span>
+            <span>Bon</span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-key">4</span>
+            <span>Bof</span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-key">5</span>
+            <span>Navet</span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-key">6</span>
+            <span>Inclassable</span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-key">7</span>
+            <span>Plaisir coupable</span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-key">8</span>
+            <span>Pas vu, je veux voir</span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-key">9</span>
+            <span>Pas vu, je m'en fous</span>
+          </div>
+          <div class="shortcut-item">
+            <span class="shortcut-key">0</span>
+            <span>Annuler dernier</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="file-input">
+          <input type="file" id="csvUpload" accept=".csv" />
+          <label for="csvUpload">📁 Importer un classement CSV</label>
+        </div>
+        <button class="btn btn-secondary" onclick="exportClassifications()">
+          📥 Exporter CSV
+        </button>
+        <button class="btn btn-danger" onclick="resetAll()">
+          🔄 Réinitialiser
+        </button>
+      </div>
+
+      <!-- Message d'état pour l'upload -->
+      <div
+        id="uploadMessage"
+        class="upload-message"
+        style="display: none"
+      ></div>
+    </div>
+
+    <script>
+      class MovieClassifier {
+        constructor() {
+          this.movies = [];
+          this.classifications = {};
+          this.unclassifiedMovies = [];
+          this.currentUnclassifiedIndex = 0;
+          this.isProcessing = false;
+          this.keyboardLocked = false;
+          this.lastKeyPressTime = 0;
+          this.minKeyInterval = 100;
+          this.categories = [
+            { id: "chef-oeuvre", name: "Chef-d'œuvre", key: "1" },
+            { id: "excellent", name: "Excellent", key: "2" },
+            { id: "bon", name: "Bon", key: "3" },
+            { id: "bof", name: "Bof", key: "4" },
+            { id: "navet", name: "Navet", key: "5" },
+            { id: "inclassable", name: "Inclassable", key: "6" },
+            { id: "plaisir-coupable", name: "Plaisir coupable", key: "7" },
+            { id: "pas-vu-veux", name: "Pas vu, je veux voir", key: "8" },
+            { id: "pas-vu-menfous", name: "Pas vu, je m'en fous", key: "9" },
+          ];
+          this.classificationHistory = [];
+
+          this.loadSavedData();
+          this.setupEventListeners();
+          this.loadMoviesFromFile();
+        }
+
+        setupEventListeners() {
+          // Keyboard shortcuts
+          document.addEventListener("keydown", (e) => {
+            const currentTime = Date.now();
+            if (e.repeat || this.keyboardLocked) return;
+            if (currentTime - this.lastKeyPressTime < this.minKeyInterval)
+              return;
+
+            if (e.key >= "1" && e.key <= "9") {
+              e.preventDefault();
+              this.lastKeyPressTime = currentTime;
+              const categoryIndex = parseInt(e.key) - 1;
+              if (categoryIndex < this.categories.length) {
+                this.classifyMovie(this.categories[categoryIndex].id);
+              }
+            }
+
+            if (e.key === "0") {
+              e.preventDefault();
+              this.lastKeyPressTime = currentTime;
+              this.undoLastClassification();
+            }
+          });
+
+          // CSV Upload
+          document
+            .getElementById("csvUpload")
+            .addEventListener("change", (e) => {
+              if (e.target.files.length > 0) {
+                this.handleCsvUpload(e.target.files[0]);
+              }
+            });
+        }
+
+        async loadMoviesFromFile() {
+          try {
+            const response = await fetch("movies.json");
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+
+            // Garder l'ordre du JSON, sans mélanger
+            this.movies = Array.isArray(data) ? data : [data];
+            this.updateUnclassifiedMovies();
+            this.currentUnclassifiedIndex = 0;
+            this.saveData();
+            this.updateDisplay();
+            this.showCurrentMovie();
+          } catch (error) {
+            console.error("Erreur lors du chargement des films:", error);
+            this.showError(
+              "Erreur lors du chargement du fichier movies.json: " +
+                error.message
+            );
+          }
+        }
+
+        showError(message) {
+          const movieDisplay = document.getElementById("movieDisplay");
+          movieDisplay.innerHTML = `
+            <div class="error-state">
+              <h3>❌ Erreur</h3>
+              <p>${message}</p>
+            </div>
+          `;
+        }
+
+        showUploadMessage(message, type = "success") {
+          const messageDiv = document.getElementById("uploadMessage");
+          messageDiv.className = `upload-message ${type}`;
+          messageDiv.innerHTML = message;
+          messageDiv.style.display = "block";
+
+          // Auto-hide after 5 seconds
+          setTimeout(() => {
+            messageDiv.style.display = "none";
+          }, 5000);
+        }
+
+        async handleCsvUpload(file) {
+          try {
+            const text = await file.text();
+            const result = this.parseCsvAndApplyClassifications(text);
+
+            if (result.success) {
+              let message = `✅ Import réussi ! ${result.imported} films classés.`;
+              if (result.warnings.length > 0) {
+                message += `<br><br>⚠️ Avertissements :<br>`;
+                result.warnings.forEach((warning) => {
+                  message += `• ${warning}<br>`;
+                });
+              }
+              this.showUploadMessage(message, "success");
+            } else {
+              this.showUploadMessage(
+                `❌ Erreur lors de l'import :<br>${result.error}`,
+                "error"
+              );
+            }
+
+            // Reset file input
+            document.getElementById("csvUpload").value = "";
+          } catch (error) {
+            this.showUploadMessage(
+              `❌ Erreur lors de la lecture du fichier : ${error.message}`,
+              "error"
+            );
+            document.getElementById("csvUpload").value = "";
+          }
+        }
+
+        parseCsvAndApplyClassifications(csvText) {
+          const lines = csvText.trim().split("\n");
+
+          if (lines.length < 2) {
+            return {
+              success: false,
+              error:
+                "Le fichier CSV doit contenir au moins une ligne d'en-tête et une ligne de données.",
+            };
+          }
+
+          // Parse header
+          const header = lines[0]
+            .split(";")
+            .map((col) => col.replace(/"/g, "").trim());
+          const idIndex = header.findIndex((col) =>
+            col.toLowerCase().includes("id")
+          );
+          const categoryIndex = header.findIndex(
+            (col) =>
+              col.toLowerCase().includes("catégorie") ||
+              col.toLowerCase().includes("categorie")
+          );
+
+          if (idIndex === -1) {
+            return {
+              success: false,
+              error: 'Colonne "ID" introuvable dans le CSV.',
+            };
+          }
+
+          if (categoryIndex === -1) {
+            return {
+              success: false,
+              error: 'Colonne "Catégorie" introuvable dans le CSV.',
+            };
+          }
+
+          // Create category mapping
+          const categoryMap = {};
+          this.categories.forEach((cat) => {
+            categoryMap[cat.name] = cat.id;
+          });
+
+          // Parse data
+          const newClassifications = {};
+          const warnings = [];
+          let imported = 0;
+
+          for (let i = 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+
+            const columns = line
+              .split(";")
+              .map((col) => col.replace(/"/g, "").trim());
+
+            if (columns.length <= Math.max(idIndex, categoryIndex)) {
+              warnings.push(
+                `Ligne ${i + 1} : Format invalide (pas assez de colonnes)`
+              );
+              continue;
+            }
+
+            const movieId = columns[idIndex];
+            const categoryName = columns[categoryIndex];
+
+            if (!movieId) {
+              warnings.push(`Ligne ${i + 1} : ID manquant`);
+              continue;
+            }
+
+            if (!categoryName || categoryName === "Non classé") {
+              continue; // Skip unclassified movies
+            }
+
+            const categoryId = categoryMap[categoryName];
+            if (!categoryId) {
+              warnings.push(
+                `Ligne ${i + 1} : Catégorie "${categoryName}" non reconnue`
+              );
+              continue;
+            }
+
+            // Check if movie exists
+            const movieExists = this.movies.some(
+              (movie) => movie.id === movieId
+            );
+            if (!movieExists) {
+              warnings.push(
+                `Film avec ID "${movieId}" non trouvé dans la base de données`
+              );
+              continue;
+            }
+
+            newClassifications[movieId] = categoryId;
+            imported++;
+          }
+
+          // Apply classifications
+          this.classifications = newClassifications;
+          this.classificationHistory = []; // Reset history
+          this.updateUnclassifiedMovies();
+          this.currentUnclassifiedIndex = 0;
+          this.saveData();
+          this.updateDisplay();
+          this.showCurrentMovie();
+
+          return {
+            success: true,
+            imported: imported,
+            warnings: warnings,
+          };
+        }
+
+        updateUnclassifiedMovies() {
+          this.unclassifiedMovies = this.movies.filter((movie) => {
+            const movieId = this.getMovieId(movie);
+            return !this.classifications[movieId];
+          });
+          if (this.currentUnclassifiedIndex >= this.unclassifiedMovies.length) {
+            this.currentUnclassifiedIndex = Math.max(
+              0,
+              this.unclassifiedMovies.length - 1
+            );
+          }
+        }
+
+        getMovieId(movie) {
+          return (
+            movie.id ||
+            movie.url ||
+            movie.title ||
+            movie.originalTitle ||
+            JSON.stringify(movie)
+          );
+        }
+
+        formatDuration(seconds) {
+          if (!seconds) return "";
+          const hours = Math.floor(seconds / 3600);
+          const minutes = Math.floor((seconds % 3600) / 60);
+
+          if (hours > 0) {
+            return `${hours}h${minutes.toString().padStart(2, "0")}`;
+          }
+          return `${minutes} min`;
+        }
+
+        showCurrentMovie() {
+          const movieDisplay = document.getElementById("movieDisplay");
+
+          if (this.movies.length === 0) {
+            movieDisplay.innerHTML = `
+              <div class="empty-state">
+                <h3>🎥 Aucun film chargé</h3>
+                <p>Vérifiez que le fichier movies.json est présent et accessible.</p>
+              </div>
+            `;
+            return;
+          }
+
+          if (this.unclassifiedMovies.length === 0) {
+            movieDisplay.innerHTML = `
+              <div class="completion-state">
+                <h3>🎉 Félicitations !</h3>
+                <p>Vous avez classé tous vos films ! Vous pouvez exporter vos classifications.</p>
+              </div>
+            `;
+            return;
+          }
+
+          const movie = this.unclassifiedMovies[this.currentUnclassifiedIndex];
+          const movieId = this.getMovieId(movie);
+
+          // Construire les infos du film
+          let movieInfo = "";
+          if (movie.year) {
+            movieInfo += `${movie.year} • `;
+          }
+          if (movie.directors?.length > 0) {
+            movieInfo += `${movie.directors[0]} • `;
+          }
+          if (movie.genres?.length > 0) {
+            movieInfo += movie.genres.join(", ");
+          }
+          if (movie.duration) {
+            movieInfo += ` • ${this.formatDuration(movie.duration)}`;
+          }
+
+          // Construire le HTML
+          let backdropStyle = "";
+          if (movie.backdrop) {
+            backdropStyle = `style="background-image: url('${movie.backdrop}')"`;
+          }
+
+          let posterElement = "";
+          if (movie.poster) {
+            posterElement = `<img src="${movie.poster}" alt="Affiche du film" class="movie-poster" onerror="this.style.display='none'">`;
+          } else {
+            posterElement = `<div class="movie-poster">🎬</div>`;
+          }
+
+          movieDisplay.innerHTML = `
+            ${
+              movie.backdrop
+                ? `<div class="movie-backdrop" ${backdropStyle}></div>`
+                : ""
+            }
+            <div class="movie-content">
+              ${posterElement}
+              <div class="movie-details">
+                <div class="movie-title">
+                  ${
+                    movie.url
+                      ? `<a href="${
+                          movie.url
+                        }" target="_blank" rel="noopener noreferrer">${
+                          movie.title ||
+                          movie.originalTitle ||
+                          "Film sans titre"
+                        }</a>`
+                      : movie.title || movie.originalTitle || "Film sans titre"
+                  }
+                </div>
+                <div class="movie-info">${movieInfo}</div>
+                ${
+                  movie.synopsis
+                    ? `<div class="movie-overview-container">
+                        <div class="movie-overview" id="synopsis-${movieId.replace(
+                          /[^a-zA-Z0-9]/g,
+                          ""
+                        )}">
+                          ${this.formatSynopsis(
+                            movie.synopsis,
+                            movieId.replace(/[^a-zA-Z0-9]/g, "")
+                          )}
+                        </div>
+                      </div>`
+                    : ""
+                }
+                <div class="categories">
+                  ${this.categories
+                    .map(
+                      (category) => `
+                    <button class="category-btn ${category.id}" 
+                            onclick="app.classifyMovie('${category.id}')">
+                        <span class="keyboard-hint">${category.key}</span>
+                        ${category.name}
+                    </button>
+                `
+                    )
+                    .join("")}
+                  <button class="category-btn undo" onclick="app.undoLastClassification()" id="undoBtn" 
+                          ${
+                            this.classificationHistory.length === 0
+                              ? "disabled"
+                              : ""
+                          }>
+                      <span class="keyboard-hint">0</span>
+                      ⟲ Annuler dernier
+                  </button>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+
+        formatSynopsis(synopsis, cleanId) {
+          const maxLength = 220;
+
+          if (synopsis.length <= maxLength) {
+            return synopsis;
+          }
+
+          const truncated = synopsis.substring(0, maxLength);
+          const lastSpaceIndex = truncated.lastIndexOf(" ");
+          const finalText = truncated.substring(0, lastSpaceIndex);
+
+          return `${finalText}... <button class="synopsis-toggle-inline" onclick="app.toggleSynopsis('${cleanId}')" data-full-text="${synopsis.replace(
+            /"/g,
+            "&quot;"
+          )}" data-truncated="${finalText}">Voir plus</button>`;
+        }
+
+        toggleSynopsis(cleanId) {
+          const synopsisElement = document.getElementById(
+            `synopsis-${cleanId}`
+          );
+          const toggleButton = synopsisElement.querySelector(
+            ".synopsis-toggle-inline"
+          );
+
+          if (!toggleButton) return;
+
+          const fullText = toggleButton.getAttribute("data-full-text");
+          const truncatedText = toggleButton.getAttribute("data-truncated");
+
+          if (toggleButton.textContent === "Voir plus") {
+            synopsisElement.innerHTML = `${fullText} <button class="synopsis-toggle-inline" onclick="app.toggleSynopsis('${cleanId}')" data-full-text="${fullText.replace(
+              /"/g,
+              "&quot;"
+            )}" data-truncated="${truncatedText}">Voir moins</button>`;
+          } else {
+            synopsisElement.innerHTML = `${truncatedText}... <button class="synopsis-toggle-inline" onclick="app.toggleSynopsis('${cleanId}')" data-full-text="${fullText.replace(
+              /"/g,
+              "&quot;"
+            )}" data-truncated="${truncatedText}">Voir plus</button>`;
+          }
+        }
+
+        classifyMovie(categoryId) {
+          if (this.keyboardLocked || this.unclassifiedMovies.length === 0)
+            return;
+
+          this.keyboardLocked = true;
+
+          const movie = this.unclassifiedMovies[this.currentUnclassifiedIndex];
+          const movieId = this.getMovieId(movie);
+
+          if (this.classifications[movieId]) {
+            this.keyboardLocked = false;
+            return;
+          }
+
+          this.classificationHistory.push({
+            movieId: movieId,
+            previousCategory: this.classifications[movieId] || null,
+            previousIndex: this.currentUnclassifiedIndex,
+            previousUnclassifiedLength: this.unclassifiedMovies.length,
+          });
+
+          this.classifications[movieId] = categoryId;
+          this.saveData();
+          this.updateUnclassifiedMovies();
+
+          if (this.currentUnclassifiedIndex >= this.unclassifiedMovies.length) {
+            this.currentUnclassifiedIndex = 0;
+          }
+
+          this.updateDisplay();
+          this.showCurrentMovie();
+
+          setTimeout(() => {
+            this.keyboardLocked = false;
+          }, 100);
+        }
+
+        undoLastClassification() {
+          if (this.classificationHistory.length === 0) return;
+
+          const lastAction = this.classificationHistory.pop();
+
+          if (lastAction.previousCategory) {
+            this.classifications[lastAction.movieId] =
+              lastAction.previousCategory;
+          } else {
+            delete this.classifications[lastAction.movieId];
+          }
+
+          this.updateUnclassifiedMovies();
+          this.currentUnclassifiedIndex = Math.min(
+            lastAction.previousIndex,
+            this.unclassifiedMovies.length - 1
+          );
+
+          this.saveData();
+          this.updateDisplay();
+          this.showCurrentMovie();
+        }
+
+        updateDisplay() {
+          const totalMovies = this.movies.length;
+          const classifiedCount = Object.keys(this.classifications).length;
+          const remainingCount = totalMovies - classifiedCount;
+          const progressPercent =
+            totalMovies > 0
+              ? Math.round((classifiedCount / totalMovies) * 100)
+              : 0;
+
+          document.getElementById("totalMovies").textContent = totalMovies;
+          document.getElementById("classifiedMovies").textContent =
+            classifiedCount;
+          document.getElementById("remainingMovies").textContent =
+            remainingCount;
+          document.getElementById("progressPercent").textContent =
+            progressPercent + "%";
+          document.getElementById("progressFill").style.width =
+            progressPercent + "%";
+
+          if (totalMovies > 0) {
+            const currentPosition = classifiedCount + 1;
+            document.getElementById(
+              "movieCounter"
+            ).textContent = `Film ${currentPosition} sur ${totalMovies}`;
+          } else {
+            document.getElementById("movieCounter").textContent =
+              "Aucun film chargé";
+          }
+        }
+
+        exportClassifications() {
+          if (this.movies.length === 0) {
+            alert("Aucun film à exporter");
+            return;
+          }
+
+          let csvContent =
+            '\uFEFF"ID";"Titre";"Titre Original";"Année";"Catégorie";"Réalisateur";"Genres";"Durée"\n';
+
+          this.movies.forEach((movie) => {
+            const movieId = this.getMovieId(movie);
+            const category = this.classifications[movieId] || "Non classé";
+            const categoryName =
+              this.categories.find((c) => c.id === category)?.name || category;
+
+            const director =
+              movie.directors?.length > 0 ? movie.directors[0] : "";
+            const genres =
+              movie.genres?.length > 0 ? movie.genres.join(", ") : "";
+            const duration = movie.duration
+              ? this.formatDuration(movie.duration)
+              : "";
+
+            csvContent += `"${movie.id || ""}";"${movie.title || ""}";"${
+              movie.originalTitle || ""
+            }";"${
+              movie.year || ""
+            }";"${categoryName}";"${director}";"${genres}";"${duration}"\n`;
+          });
+
+          const blob = new Blob([csvContent], {
+            type: "text/csv;charset=utf-8",
+          });
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "classement-films.csv";
+          a.click();
+          window.URL.revokeObjectURL(url);
+        }
+
+        resetAll() {
+          if (
+            confirm(
+              "Êtes-vous sûr de vouloir réinitialiser tous les classements ?"
+            )
+          ) {
+            this.classifications = {};
+            this.classificationHistory = [];
+            this.updateUnclassifiedMovies();
+            this.currentUnclassifiedIndex = 0;
+            this.saveData();
+            this.updateDisplay();
+            this.showCurrentMovie();
+            this.keyboardLocked = false;
+          }
+        }
+
+        saveData() {
+          const data = {
+            classifications: this.classifications,
+            currentUnclassifiedIndex: this.currentUnclassifiedIndex,
+            classificationHistory: this.classificationHistory,
+          };
+          localStorage.setItem("movieClassifierData", JSON.stringify(data));
+        }
+
+        loadSavedData() {
+          const saved = localStorage.getItem("movieClassifierData");
+          if (saved) {
+            try {
+              const data = JSON.parse(saved);
+              this.classifications = data.classifications || {};
+              this.currentUnclassifiedIndex =
+                data.currentUnclassifiedIndex || 0;
+              this.classificationHistory = data.classificationHistory || [];
+            } catch (e) {
+              console.error("Erreur de parsing du localStorage :", e);
+              this.classifications = {};
+              this.currentUnclassifiedIndex = 0;
+              this.classificationHistory = [];
+            }
+          }
+        }
+      }
+
+      // Initialize the app
+      const app = new MovieClassifier();
+
+      // Export functions to global scope
+      window.toggleSynopsis = (cleanId) => app.toggleSynopsis(cleanId);
+      window.exportClassifications = () => app.exportClassifications();
+      window.undoLastClassification = () => app.undoLastClassification();
+      window.resetAll = () => app.resetAll();
+    </script>
+  </body>
+</html>
