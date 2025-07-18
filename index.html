@@ -97,6 +97,10 @@
             <span class="shortcut-key">0</span>
             <span>Annuler dernier</span>
           </div>
+          <div class="shortcut-item">
+            <span class="shortcut-key">→</span>
+            <span>Suivant</span>
+          </div>
         </div>
       </div>
 
@@ -171,6 +175,12 @@
               e.preventDefault();
               this.lastKeyPressTime = currentTime;
               this.undoLastClassification();
+            }
+
+            if (e.key === "ArrowRight") {
+              e.preventDefault();
+              this.lastKeyPressTime = currentTime;
+              this.skipMovie();
             }
           });
 
@@ -524,6 +534,10 @@
                       <span class="keyboard-hint">0</span>
                       ⟲ Annuler dernier
                   </button>
+                  <button class="category-btn next" onclick="app.skipMovie()">
+                      <span class="keyboard-hint">→</span>
+                      Suivant
+                  </button>
                 </div>
               </div>
             </div>
@@ -602,6 +616,26 @@
             this.currentUnclassifiedIndex = 0;
           }
 
+          this.updateDisplay();
+          this.showCurrentMovie();
+
+          setTimeout(() => {
+            this.keyboardLocked = false;
+          }, 100);
+        }
+
+        skipMovie() {
+          if (this.keyboardLocked || this.unclassifiedMovies.length <= 1)
+            return;
+
+          this.keyboardLocked = true;
+
+          this.currentUnclassifiedIndex++;
+          if (this.currentUnclassifiedIndex >= this.unclassifiedMovies.length) {
+            this.currentUnclassifiedIndex = 0;
+          }
+
+          this.saveData();
           this.updateDisplay();
           this.showCurrentMovie();
 
@@ -755,6 +789,7 @@
       // Export functions to global scope
       window.toggleSynopsis = (cleanId) => app.toggleSynopsis(cleanId);
       window.exportClassifications = () => app.exportClassifications();
+      window.skipMovie = () => app.skipMovie();
       window.undoLastClassification = () => app.undoLastClassification();
       window.resetAll = () => app.resetAll();
     </script>
